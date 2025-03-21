@@ -11,14 +11,18 @@
     }
     .board-container {
       max-width: 400px;
-      margin: auto;
+      margin: 20px auto;
     }
-    .controls {
-      margin-top: 20px;
+    .status-message {
+      text-align: center;
+      margin: 15px 0;
+      font-weight: bold;
+      min-height: 24px;
     }
     .footer {
       margin-top: 30px;
       font-size: 0.9em;
+      text-align: center;
     }
   </style>
 </head>
@@ -26,48 +30,67 @@
   <div class="container">
     <div class="text-center">
       <h1 class="mt-4">Chess vs. Stockfish Lite</h1>
-      <p class="lead">Play chess against an AI powered by Stockfish Lite</p>
+      <p class="lead">Play against AI (Black pieces)</p>
     </div>
+    <div class="status-message" id="status">White's turn</div>
     <div class="board-container">
       <div id="board"></div>
     </div>
-    <div class="text-center controls">
-      <button id="newGame" class="btn btn-primary">New Game</button>
-    </div>
-    <div class="text-center footer">
-      <p>Download Stockfish Lite (<code>stockfish.js</code>) from <a href="https://github.com/niklasf/stockfish.js" target="_blank">GitHub: niklasf/stockfish.js</a></p>
+    <div class="footer">
+      <p>Download Stockfish Lite (<code>stockfish.js</code>) from <a href="https://github.com/niklasf/stockfish.js" target="_blank">GitHub</a></p>
     </div>
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.2/chess.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/js/chessboard.min.js"></script>
   <script>
-    var game = new Chess();
-    var board = null;
-    var engine = null;
+    const game = new Chess();
+    let board = null;
+    let engine = null;
+    const statusElement = document.getElementById('status');
+
+    function updateStatus() {
+      let status = '';
+      
+      if (game.isCheckmate()) {
+        status = `Game over: ${game.turn() === 'w' ? 'Black' : 'White'} wins by checkmate!`;
+      } else if (game.isDraw()) {
+        status = 'Game drawn';
+      } else {
+        status = `${game.turn() === 'w' ? 'White' : 'Black'}'s turn`;
+        if (game.inCheck()) {
+          status += ` (${game.turn() === 'w' ? 'White' : 'Black'} is in check!)`;
+        }
+      }
+      
+      statusElement.textContent = status;
+    }
 
     function initEngine() {
       try {
         engine = new Worker('stockfish.js');
       } catch (error) {
-        console.error("Failed to load Stockfish:", error);
-        alert("Error loading Stockfish. Ensure stockfish.js is in the same folder.");
+        statusElement.textContent = 'Error loading Stockfish engine!';
+        console.error(error);
         return;
       }
 
       engine.onmessage = function(event) {
-        var line = event.data;
-        console.log("Engine:", line);
+        const line = event.data;
         if (line.startsWith("bestmove")) {
-          var bestMove = line.split(" ")[1];
+          const bestMove = line.split(" ")[1];
           if (bestMove && bestMove !== "(none)") {
-            var move = game.move({
+            const move = game.move({
               from: bestMove.substring(0, 2),
               to: bestMove.substring(2, 4),
               promotion: 'q'
             });
             if (move) {
               board.position(game.fen());
+              updateStatus();
+              if (game.isGameOver()) {
+                setTimeout(() => alert(game.isCheckmate() ? 'Checkmate! AI wins!' : 'Game drawn!'), 100);
+              }
             }
           }
         }
@@ -79,14 +102,33 @@
     }
 
     function onDrop(source, target) {
-      var move = game.move({
+      if (game.isGameOver()) return false;
+      if (game.turn() !== 'w') {
+        statusElement.textContent = "Wait for AI's move!";
+        return 'snapback';
+      }
+
+      const move = game.move({
         from: source,
         to: target,
         promotion: 'q'
       });
-      if (move === null) return 'snapback';
+
+      if (move === null) {
+        return 'snapback';
+      }
+
       board.position(game.fen());
+      updateStatus();
+      
+      if (game.isGameOver()) {
+        setTimeout(() => alert(game.isCheckmate() ? 'Checkmate! You win!' : 'Game drawn!'), 100);
+        return true;
+      }
+
+      statusElement.textContent = "AI is thinking...";
       setTimeout(makeAIMove, 250);
+      return true;
     }
 
     function makeAIMove() {
@@ -94,28 +136,20 @@
       engine.postMessage("go depth 15");
     }
 
-    function newGame() {
-      game.reset();
-      board.position(game.fen());
-      
-      // Reset engine state
-      engine.postMessage("stop");
-      engine.postMessage("ucinewgame");
-      engine.postMessage("position startpos");
-    }
-
-    // Initialize board
+    // Initialize board and engine
     board = Chessboard('board', {
       draggable: true,
       position: 'start',
       onDrop: onDrop
     });
-
-    // Initialize engine
+    
     initEngine();
+    updateStatus();
 
-    // Event listeners
-    document.getElementById("newGame").addEventListener("click", newGame);
+    // Auto-start new game
+    game.reset();
+    engine.postMessage("ucinewgame");
+    engine.postMessage("position startpos");
   </script>
 
   <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
