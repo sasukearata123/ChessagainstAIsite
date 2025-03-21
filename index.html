@@ -1,146 +1,139 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Full Screen Chess</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            background: #f0f0f0;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-
-        #board {
-            width: 100vw;
-            height: 100vh;
-            display: flex;
-            flex-wrap: wrap;
-        }
-
-        .square {
-            width: calc(100vw / 8);
-            height: calc(100vh / 8);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 3em;
-            cursor: pointer;
-            transition: background-color 0.3s;
-        }
-
-        .light {
-            background-color: #f0d9b5;
-        }
-
-        .dark {
-            background-color: #b58863;
-        }
-
-        #status {
-            position: fixed;
-            top: 10px;
-            left: 10px;
-            background: white;
-            padding: 5px 10px;
-            border-radius: 3px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-        }
-    </style>
+  <meta charset="UTF-8">
+  <title>Chess vs. Stockfish Lite</title>
+  <!-- Chessboard.js CSS -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/css/chessboard.min.css">
+  <!-- Bootstrap CSS for improved UI -->
+  <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      background-color: #f8f9fa;
+    }
+    .board-container {
+      max-width: 400px;
+      margin: auto;
+    }
+    .controls {
+      margin-top: 20px;
+    }
+    .footer {
+      margin-top: 30px;
+      font-size: 0.9em;
+    }
+  </style>
 </head>
 <body>
-    <div id="status">White's turn</div>
-    <div id="board"></div>
+  <div class="container">
+    <div class="text-center">
+      <h1 class="mt-4">Chess vs. Stockfish Lite</h1>
+      <p class="lead">Play chess against an AI powered by Stockfish Lite</p>
+    </div>
+    <div class="board-container">
+      <div id="board"></div>
+    </div>
+    <div class="text-center controls">
+      <button id="newGame" class="btn btn-primary">New Game</button>
+    </div>
+    <div class="text-center footer">
+      <p>Download Stockfish Lite (<code>stockfish.js</code>) from <a href="https://github.com/niklasf/stockfish.js" target="_blank">GitHub: niklasf/stockfish.js</a></p>
+    </div>
+  </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.min.js"></script>
-    <script>
-        const board = document.getElementById('board');
-        const status = document.getElementById('status');
-        let isWhiteTurn = true;
-        let selectedPiece = null;
-        
-        // Initialize board
-        const initialPosition = [
-            ['♜','♞','♝','♛','♚','♝','♞','♜'],
-            ['♟','♟','♟','♟','♟','♟','♟','♟'],
-            ['','','','','','','',''],
-            ['','','','','','','',''],
-            ['','','','','','','',''],
-            ['','','','','','','',''],
-            ['♙','♙','♙','♙','♙','♙','♙','♙'],
-            ['♖','♘','♗','♕','♔','♗','♘','♖']
-        ];
+  <!-- Include chess.js for game logic -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.2/chess.min.js"></script>
+  <!-- Include Chessboard.js for board rendering -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/js/chessboard.min.js"></script>
+  <script>
+    // Create a new Chess game instance
+    var game = new Chess();
+    var board = null;
+    var engine = null; // Will hold our Stockfish engine
 
-        // Create board squares
-        for (let row = 0; row < 8; row++) {
-            for (let col = 0; col < 8; col++) {
-                const square = document.createElement('div');
-                square.className = `square ${(row + col) % 2 === 0 ? 'light' : 'dark'}`;
-                square.dataset.row = row;
-                square.dataset.col = col;
-                square.textContent = initialPosition[row][col];
-                square.addEventListener('click', handleSquareClick);
-                board.appendChild(square);
+    // Initialize the Stockfish engine as a Web Worker with error handling
+    function initEngine() {
+      try {
+        engine = new Worker('stockfish.js'); // Ensure stockfish.js is in the same folder
+      } catch (error) {
+        console.error("Failed to load Stockfish engine:", error);
+        alert("Error: Stockfish engine failed to load. Please ensure that stockfish.js is in the same folder.");
+        return;
+      }
+      
+      // Listen for errors from the worker
+      engine.onerror = function(e) {
+        console.error("Stockfish Worker Error:", e);
+        alert("A Stockfish engine error occurred. Check the console for details.");
+      };
+
+      // Listen for messages from Stockfish
+      engine.onmessage = function(event) {
+        var line = event.data;
+        console.log("Engine:", line);
+        // Check if the engine provides a best move
+        if (line.indexOf("bestmove") === 0) {
+          var parts = line.split(" ");
+          var bestMove = parts[1];
+          if (bestMove && bestMove !== "(none)") {
+            var moveObj = {
+              from: bestMove.substring(0, 2),
+              to: bestMove.substring(2, 4),
+              promotion: 'q' // Always promote to queen for simplicity
+            };
+            var move = game.move(moveObj);
+            if (move) {
+              board.position(game.fen());
             }
+          }
         }
+      };
 
-        // Initialize Stockfish
-        const stockfish = new Worker('https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.min.js');
-        stockfish.onmessage = function(event) {
-            if (event.data?.startsWith('bestmove')) {
-                const move = event.data.split(' ')[1];
-                makeMove(move);
-            }
-        };
+      // Initialize engine with UCI commands
+      engine.postMessage("uci");
+      engine.postMessage("ucinewgame");
+    }
 
-        function handleSquareClick(e) {
-            const square = e.target;
-            if (!selectedPiece) {
-                if (square.textContent && isWhiteTurn === (square.textContent === square.textContent.toUpperCase())) {
-                    selectedPiece = square;
-                    square.style.backgroundColor = '#7dbd7d';
-                }
-            } else {
-                const from = getSquareNotation(selectedPiece);
-                const to = getSquareNotation(square);
-                makeMove(from + to);
-                selectedPiece.style.backgroundColor = '';
-                selectedPiece = null;
-            }
-        }
+    // Called when a piece is dropped on the board
+    function onDrop(source, target) {
+      var move = game.move({
+        from: source,
+        to: target,
+        promotion: 'q'
+      });
+      if (move === null) return 'snapback'; // Illegal move
 
-        function getSquareNotation(square) {
-            const col = String.fromCharCode(97 + parseInt(square.dataset.col));
-            const row = 8 - parseInt(square.dataset.row);
-            return col + row;
-        }
+      board.position(game.fen());
+      // Allow a short delay before Stockfish makes its move
+      setTimeout(makeAIMove, 250);
+    }
 
-        function makeMove(move) {
-            const fromCol = move.charCodeAt(0) - 97;
-            const fromRow = 8 - move.charAt(1);
-            const toCol = move.charCodeAt(2) - 97;
-            const toRow = 8 - move.charAt(3);
-            
-            const fromSquare = document.querySelector(`[data-row="${fromRow}"][data-col="${fromCol}"]`);
-            const toSquare = document.querySelector(`[data-row="${toRow}"][data-col="${toCol}"]`);
-            
-            toSquare.textContent = fromSquare.textContent;
-            fromSquare.textContent = '';
-            
-            isWhiteTurn = !isWhiteTurn;
-            status.textContent = `${isWhiteTurn ? 'White' : 'Black'}'s turn`;
-            
-            if (!isWhiteTurn) {
-                stockfish.postMessage(`position startpos moves ${move}`);
-                stockfish.postMessage('go depth 10');
-            }
-        }
-    </script>
+    // Trigger Stockfish to compute its move
+    function makeAIMove() {
+      engine.postMessage("position fen " + game.fen());
+      engine.postMessage("go depth 15");
+    }
+
+    // Reset the game for a new session
+    function newGame() {
+      game.reset();
+      board.position('start');
+      engine.postMessage("ucinewgame");
+    }
+
+    // Initialize the Chessboard.js with the onDrop handler
+    board = Chessboard('board', {
+      draggable: true,
+      position: 'start',
+      onDrop: onDrop
+    });
+
+    // Initialize Stockfish engine and attach event listener to the New Game button
+    initEngine();
+    document.getElementById("newGame").addEventListener("click", newGame);
+  </script>
+  <!-- Bootstrap and jQuery (for Bootstrap functionality) -->
+  <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+  <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
