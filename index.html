@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Chess vs. Stockfish Lite</title>
+  <!-- Chessboard.js CSS -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/css/chessboard.min.css" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin-top: 20px;
+    }
+    #board {
+      margin: 0 auto;
+      margin-bottom: 20px;
+      width: 400px;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>Chess vs. Stockfish Lite</h1>
+  <div id="board"></div>
+  <button id="newGame">New Game</button>
+
+  <!-- Chess.js for game rules -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.2/chess.min.js"></script>
+  <!-- Chessboard.js for board rendering -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/js/chessboard.min.js"></script>
+  <script>
+    // Initialize a new Chess game
+    var game = new Chess();
+    var board = null;
+    var engine = null;  // This will hold our Stockfish Lite engine
+
+    // Initialize the Stockfish engine as a Web Worker
+    function initEngine() {
+      engine = new Worker('stockfish.js'); // Ensure stockfish.js is in the same folder
+      
+      // Listen for messages from the engine
+      engine.onmessage = function(event) {
+        var line = event.data;
+        console.log("Engine:", line);
+        // Look for the best move command
+        if (line.indexOf("bestmove") === 0) {
+          var parts = line.split(" ");
+          var bestMove = parts[1];
+          if (bestMove && bestMove !== "(none)") {
+            var moveObj = {
+              from: bestMove.substring(0, 2),
+              to: bestMove.substring(2, 4),
+              promotion: 'q' // Always promote to a queen for simplicity
+            };
+            game.move(moveObj);
+            board.position(game.fen());
+          }
+        }
+      };
+
+      // Send UCI commands to initialize the engine
+      engine.postMessage("uci");
+      engine.postMessage("ucinewgame");
+    }
+
+    // Called when a piece is dropped on the board
+    function onDrop(source, target) {
+      // Attempt to make the move on our game instance
+      var move = game.move({
+        from: source,
+        to: target,
+        promotion: 'q'
+      });
+      // Illegal move? Snap piece back
+      if (move === null) return 'snapback';
+      
+      board.position(game.fen());
+      // Let Stockfish make its move after a short delay
+      setTimeout(makeAIMove, 250);
+    }
+
+    // Trigger Stockfish to compute its move
+    function makeAIMove() {
+      engine.postMessage("position fen " + game.fen());
+      engine.postMessage("go depth 15");
+    }
+
+    // Reset the game for a new session
+    function newGame() {
+      game.reset();
+      board.start();
+    }
+
+    // Initialize Chessboard.js with our onDrop handler
+    board = Chessboard('board', {
+      draggable: true,
+      position: 'start',
+      onDrop: onDrop
+    });
+
+    // Initialize the engine and attach the new game button event
+    initEngine();
+    document.getElementById("newGame").addEventListener("click", newGame);
+  </script>
+  
+  <footer>
+    <p>Download Stockfish Lite (<code>stockfish.js</code>) from <a href="https://github.com/niklasf/stockfish.js" target="_blank">GitHub: niklasf/stockfish.js</a></p>
+  </footer>
+</body>
+</html>
