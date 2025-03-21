@@ -3,44 +3,56 @@
 <head>
   <meta charset="UTF-8">
   <title>Chess vs. Stockfish Lite</title>
+  <!-- Load jQuery FIRST -->
+  <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+  <!-- Chessboard.js CSS -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/css/chessboard.min.css">
-  <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
   <style>
     body {
       background-color: #f8f9fa;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
       padding: 20px;
     }
     .board-container {
       width: 400px;
+      height: 400px;
       margin: 20px auto;
+    }
+    #board {
+      width: 400px;
+      height: 400px;
     }
     .status-message {
       text-align: center;
       margin: 15px 0;
       font-weight: bold;
+      font-size: 1.2em;
       min-height: 24px;
     }
     .footer {
+      margin-top: auto;
+      padding: 20px;
       text-align: center;
-      margin-top: 30px;
       font-size: 0.9em;
+      color: #666;
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1 class="text-center mt-4">Chess vs. Stockfish</h1>
-    <div class="status-message" id="status">White's turn</div>
-    <div class="board-container">
-      <div id="board" style="width: 400px"></div>
-    </div>
-    <div class="footer">
-      <p>Requires stockfish.js from <a href="https://github.com/niklasf/stockfish.js" target="_blank">GitHub</a></p>
-    </div>
+  <h1>Chess vs. Stockfish</h1>
+  <div class="status-message" id="status">White's turn</div>
+  <div class="board-container">
+    <div id="board"></div>
+  </div>
+  <div class="footer">
+    Requires stockfish.js from <a href="https://github.com/niklasf/stockfish.js" target="_blank">GitHub</a>
   </div>
 
-  <!-- jQuery must come first -->
-  <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+  <!-- Chess.js and Chessboard.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.2/chess.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/js/chessboard.min.js"></script>
 
@@ -49,12 +61,13 @@
     const statusElement = document.getElementById('status');
     let engine = null;
 
-    // Initialize chessboard
+    // Initialize chessboard with proper configuration
     const board = Chessboard('board', {
       draggable: true,
       position: 'start',
       onDrop: handleMove,
-      sparePieces: false
+      showNotation: true,
+      pieceTheme: 'https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/img/chesspieces/wikipedia/{piece}.png'
     });
 
     function updateStatus() {
@@ -67,7 +80,7 @@
       } else {
         status = `${game.turn() === 'w' ? 'White' : 'Black'}'s turn`;
         if (game.inCheck()) {
-          status += ` (${game.turn() === 'w' ? 'White' : 'Black'} in check!)`;
+          status += ` (CHECK!)`;
         }
       }
       
@@ -109,17 +122,13 @@
     }
 
     function handleMove(source, target) {
-      // Clear any existing alerts
-      statusElement.style.color = 'inherit';
-
       if (game.isGameOver()) {
         statusElement.textContent = "Game over! Refresh to start new game.";
         return 'snapback';
       }
 
       if (game.turn() !== 'w') {
-        statusElement.textContent = "Not your turn - AI is thinking!";
-        statusElement.style.color = 'red';
+        statusElement.textContent = "Wait for AI's move!";
         return 'snapback';
       }
 
@@ -131,7 +140,6 @@
 
       if (move === null) {
         statusElement.textContent = "Invalid move!";
-        statusElement.style.color = 'red';
         return 'snapback';
       }
 
@@ -152,7 +160,7 @@
       return true;
     }
 
-    // Start the game
+    // Initialize game
     initEngine();
     updateStatus();
   </script>
