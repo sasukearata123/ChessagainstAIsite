@@ -1,115 +1,161 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>Chess vs. Stockfish Lite</title>
-  <!-- Chessboard.js CSS -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/css/chessboard.min.css" />
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      margin-top: 20px;
-    }
-    #board {
-      margin: 0 auto;
-      margin-bottom: 20px;
-      width: 400px;
-    }
-    button {
-      padding: 10px 20px;
-      font-size: 16px;
-      cursor: pointer;
-    }
-  </style>
+    <title>Chess vs Stockfish</title>
+    <style>
+        .chessboard {
+            width: 560px;
+            height: 560px;
+            border: 2px solid #333;
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+        }
+
+        .square {
+            width: 70px;
+            height: 70px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 50px;
+            cursor: pointer;
+        }
+
+        .white {
+            background-color: #f0d9b5;
+        }
+
+        .black {
+            background-color: #b58863;
+        }
+
+        .selected {
+            background-color: rgba(0, 255, 0, 0.5);
+        }
+
+        .possible-move {
+            background-color: rgba(255, 255, 0, 0.5);
+        }
+    </style>
 </head>
 <body>
-  <h1>Chess vs. Stockfish Lite</h1>
-  <div id="board"></div>
-  <button id="newGame">New Game</button>
+    <div class="chessboard" id="board"></div>
 
-  <!-- chess.js for game logic -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.2/chess.min.js"></script>
-  <!-- Chessboard.js for board rendering -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/js/chessboard.min.js"></script>
-  <script>
-    // Initialize a new Chess game instance
-    var game = new Chess();
-    var board = null;
-    var engine = null;  // Will hold our Stockfish Lite engine
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.js"></script>
+    <script src="stockfish.js"></script>
 
-    // Initialize the Stockfish engine as a Web Worker
-    function initEngine() {
-      engine = new Worker('stockfish.js'); // Ensure stockfish.js is in the same folder
-      
-      // Listen for messages from the engine
-      engine.onmessage = function(event) {
-        var line = event.data;
-        console.log("Engine:", line);
-        // Check if the engine has provided a best move
-        if (line.indexOf("bestmove") === 0) {
-          var parts = line.split(" ");
-          var bestMove = parts[1];
-          if (bestMove && bestMove !== "(none)") {
-            var moveObj = {
-              from: bestMove.substring(0, 2),
-              to: bestMove.substring(2, 4),
-              promotion: 'q' // Always promote to a queen for simplicity
-            };
-            game.move(moveObj);
-            board.position(game.fen());
-          }
+    <script>
+        const boardElement = document.getElementById('board');
+        const game = new Chess();
+        let selectedSquare = null;
+        let possibleMoves = [];
+
+        // Initialize Stockfish
+        const stockfish = new Worker('stockfish.js');
+        stockfish.onmessage = (event) => {
+            if (event.data.includes('bestmove')) {
+                const bestMove = event.data.split('bestmove ')[1].split(' ')[0];
+                makeMove(bestMove);
+            }
+        };
+
+        // Initialize board
+        function createBoard() {
+            boardElement.innerHTML = '';
+            for (let i = 0; i < 64; i++) {
+                const square = document.createElement('div');
+                const row = 8 - Math.floor(i / 8);
+                const col = 'abcdefgh'[i % 8];
+                square.className = `square ${(i + Math.floor(i / 8)) % 2 === 0 ? 'white' : 'black'}`;
+                square.dataset.position = col + row;
+                square.addEventListener('click', handleSquareClick);
+                boardElement.appendChild(square);
+            }
+            updateBoard();
         }
-      };
 
-      // Send UCI commands to initialize the engine
-      engine.postMessage("uci");
-      engine.postMessage("ucinewgame");
-    }
+        // Update piece positions
+        function updateBoard() {
+            document.querySelectorAll('.square').forEach(square => {
+                const position = square.dataset.position;
+                const piece = game.get(position);
+                square.textContent = piece ? getUnicodePiece(piece) : '';
+            });
+        }
 
-    // Called when a piece is dropped on the board
-    function onDrop(source, target) {
-      // Attempt to make the move on our game instance
-      var move = game.move({
-        from: source,
-        to: target,
-        promotion: 'q'
-      });
-      // Illegal move? Snap piece back.
-      if (move === null) return 'snapback';
-      
-      board.position(game.fen());
-      // Let Stockfish make its move after a short delay
-      setTimeout(makeAIMove, 250);
-    }
+        // Convert piece to Unicode
+        function getUnicodePiece(piece) {
+            const unicodePieces = {
+                'p': '♟', 'n': '♞', 'b': '♝', 'r': '♜', 'q': '♖', 'k': '♔',
+                'P': '♙', 'N': '♘', 'B': '♗', 'R': '♖', 'Q': '♕', 'K': '♔'
+            };
+            return unicodePieces[piece.color === 'w' ? piece.type.toUpperCase() : piece.type];
+        }
 
-    // Trigger Stockfish to compute its move
-    function makeAIMove() {
-      engine.postMessage("position fen " + game.fen());
-      engine.postMessage("go depth 15");
-    }
+        // Handle square clicks
+        function handleSquareClick(e) {
+            const position = e.target.dataset.position;
+            
+            if (selectedSquare === position) {
+                clearSelection();
+                return;
+            }
 
-    // Reset the game for a new session
-    function newGame() {
-      game.reset();
-      board.position('start');  // Reset board to starting position
-      engine.postMessage("ucinewgame"); // Reset engine's internal state
-    }
+            if (selectedSquare) {
+                const move = game.move({
+                    from: selectedSquare,
+                    to: position,
+                    promotion: 'q'
+                });
 
-    // Initialize Chessboard.js with our onDrop handler
-    board = Chessboard('board', {
-      draggable: true,
-      position: 'start',
-      onDrop: onDrop
-    });
+                if (move) {
+                    clearSelection();
+                    updateBoard();
+                    stockfish.postMessage(`position fen ${game.fen()}`);
+                    stockfish.postMessage('go depth 10');
+                    return;
+                }
+            }
 
-    // Initialize the engine and attach the new game button event
-    initEngine();
-    document.getElementById("newGame").addEventListener("click", newGame);
-  </script>
-  
-  <footer>
-    <p>Download Stockfish Lite (<code>stockfish.js</code>) from <a href="https://github.com/niklasf/stockfish.js" target="_blank">GitHub: niklasf/stockfish.js</a></p>
-  </footer>
+            const moves = game.moves({ square: position, verbose: true });
+            if (moves.length > 0 && game.turn() === 'w') {
+                selectedSquare = position;
+                possibleMoves = moves.map(move => move.to);
+                highlightSquares();
+            }
+        }
+
+        // Highlight selected and possible moves
+        function highlightSquares() {
+            document.querySelectorAll('.square').forEach(square => {
+                square.classList.remove('selected', 'possible-move');
+                if (square.dataset.position === selectedSquare) {
+                    square.classList.add('selected');
+                } else if (possibleMoves.includes(square.dataset.position)) {
+                    square.classList.add('possible-move');
+                }
+            });
+        }
+
+        // Clear selection
+        function clearSelection() {
+            selectedSquare = null;
+            possibleMoves = [];
+            document.querySelectorAll('.square').forEach(square => {
+                square.classList.remove('selected', 'possible-move');
+            });
+        }
+
+        // Make computer move
+        function makeMove(move) {
+            game.move(move);
+            updateBoard();
+        }
+
+        // Initialize stockfish communication
+        stockfish.postMessage('uci');
+        stockfish.postMessage('isready');
+        createBoard();
+    </script>
 </body>
 </html>
