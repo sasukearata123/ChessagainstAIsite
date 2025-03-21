@@ -1,227 +1,146 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Chess vs Stockfish</title>
+    <title>Full Screen Chess</title>
     <style>
-        :root {
-            --light-square: #f0d9b5;
-            --dark-square: #b58863;
-            --highlight: rgba(68, 138, 255, 0.5);
-            --possible-move: rgba(255, 255, 0, 0.3);
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
 
         body {
+            background: #f0f0f0;
+            height: 100vh;
             display: flex;
             flex-direction: column;
             align-items: center;
-            background: #f0f0f0;
-            font-family: Arial, sans-serif;
         }
 
-        .container {
-            margin-top: 2rem;
-            padding: 20px;
-            background: #fff;
-            border-radius: 10px;
-            box-shadow: 0 0 20px rgba(0,0,0,0.1);
-        }
-
-        .chessboard {
-            width: 560px;
-            height: 560px;
-            display: grid;
-            grid-template-columns: repeat(8, 1fr);
-            border: 2px solid #333;
-            border-radius: 5px;
-            overflow: hidden;
+        #board {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-wrap: wrap;
         }
 
         .square {
-            width: 70px;
-            height: 70px;
+            width: calc(100vw / 8);
+            height: calc(100vh / 8);
             display: flex;
-            align-items: center;
             justify-content: center;
-            font-size: 48px;
+            align-items: center;
+            font-size: 3em;
             cursor: pointer;
-            transition: background-color 0.2s;
-            position: relative;
+            transition: background-color 0.3s;
         }
 
-        .square.white {
-            background-color: var(--light-square);
+        .light {
+            background-color: #f0d9b5;
         }
 
-        .square.black {
-            background-color: var(--dark-square);
+        .dark {
+            background-color: #b58863;
         }
 
-        .square.selected {
-            background-color: var(--highlight) !important;
-        }
-
-        .square.possible-move::after {
-            content: '';
-            position: absolute;
-            width: 24px;
-            height: 24px;
-            background: var(--possible-move);
-            border-radius: 50%;
-        }
-
-        .square:hover {
-            filter: brightness(1.1);
-        }
-
-        .status {
-            margin-top: 1rem;
-            font-size: 1.2rem;
-            color: #333;
-        }
-
-        .piece {
-            text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
-            transition: transform 0.2s;
-        }
-
-        .piece:hover {
-            transform: scale(1.1);
+        #status {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: white;
+            padding: 5px 10px;
+            border-radius: 3px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="chessboard" id="board"></div>
-        <div class="status" id="status">White's turn</div>
-    </div>
+    <div id="status">White's turn</div>
+    <div id="board"></div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.js"></script>
-    <script src="stockfish.js"></script>
-
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.min.js"></script>
     <script>
-        const boardElement = document.getElementById('board');
-        const statusElement = document.getElementById('status');
-        const game = new Chess();
-        let selectedSquare = null;
-        let possibleMoves = [];
+        const board = document.getElementById('board');
+        const status = document.getElementById('status');
+        let isWhiteTurn = true;
+        let selectedPiece = null;
+        
+        // Initialize board
+        const initialPosition = [
+            ['♜','♞','♝','♛','♚','♝','♞','♜'],
+            ['♟','♟','♟','♟','♟','♟','♟','♟'],
+            ['','','','','','','',''],
+            ['','','','','','','',''],
+            ['','','','','','','',''],
+            ['','','','','','','',''],
+            ['♙','♙','♙','♙','♙','♙','♙','♙'],
+            ['♖','♘','♗','♕','♔','♗','♘','♖']
+        ];
+
+        // Create board squares
+        for (let row = 0; row < 8; row++) {
+            for (let col = 0; col < 8; col++) {
+                const square = document.createElement('div');
+                square.className = `square ${(row + col) % 2 === 0 ? 'light' : 'dark'}`;
+                square.dataset.row = row;
+                square.dataset.col = col;
+                square.textContent = initialPosition[row][col];
+                square.addEventListener('click', handleSquareClick);
+                board.appendChild(square);
+            }
+        }
 
         // Initialize Stockfish
-        const stockfish = new Worker('stockfish.js');
-        stockfish.onmessage = (event) => {
-            if (event.data.includes('bestmove')) {
-                const bestMove = event.data.split('bestmove ')[1].split(' ')[0];
-                setTimeout(() => makeMove(bestMove), 500); // Add slight delay for natural feel
+        const stockfish = new Worker('https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.min.js');
+        stockfish.onmessage = function(event) {
+            if (event.data?.startsWith('bestmove')) {
+                const move = event.data.split(' ')[1];
+                makeMove(move);
             }
         };
-
-        // Correct piece Unicode symbols
-        const pieceUnicode = {
-            'w': {
-                'p': '♙', 'n': '♘', 'b': '♗', 'r': '♖', 
-                'q': '♕', 'k': '♔'
-            },
-            'b': {
-                'p': '♟', 'n': '♞', 'b': '♝', 'r': '♜', 
-                'q': '♛', 'k': '♚'
-            }
-        };
-
-        function createBoard() {
-            boardElement.innerHTML = '';
-            for (let rank = 8; rank >= 1; rank--) {
-                for (let file = 0; file < 8; file++) {
-                    const square = document.createElement('div');
-                    const fileChar = String.fromCharCode(97 + file);
-                    const position = fileChar + rank;
-                    const isLight = (file + rank) % 2 === 0;
-                    
-                    square.className = `square ${isLight ? 'white' : 'black'}`;
-                    square.dataset.position = position;
-                    square.addEventListener('click', handleSquareClick);
-                    boardElement.appendChild(square);
-                }
-            }
-            updateBoard();
-        }
-
-        function updateBoard() {
-            document.querySelectorAll('.square').forEach(square => {
-                const position = square.dataset.position;
-                const piece = game.get(position);
-                square.innerHTML = piece ? 
-                    `<div class="piece">${pieceUnicode[piece.color][piece.type]}</div>` : '';
-            });
-            
-            statusElement.textContent = `${game.turn() === 'w' ? 'White' : 'Black'}'s turn`;
-        }
 
         function handleSquareClick(e) {
-            const position = e.currentTarget.dataset.position;
-            
-            if (selectedSquare === position) {
-                clearSelection();
-                return;
-            }
-
-            if (selectedSquare) {
-                const move = game.move({
-                    from: selectedSquare,
-                    to: position,
-                    promotion: 'q'
-                });
-
-                if (move) {
-                    clearSelection();
-                    updateBoard();
-                    setTimeout(() => {
-                        stockfish.postMessage(`position fen ${game.fen()}`);
-                        stockfish.postMessage('go depth 12');
-                    }, 100);
-                    return;
+            const square = e.target;
+            if (!selectedPiece) {
+                if (square.textContent && isWhiteTurn === (square.textContent === square.textContent.toUpperCase())) {
+                    selectedPiece = square;
+                    square.style.backgroundColor = '#7dbd7d';
                 }
-            }
-
-            const piece = game.get(position);
-            if (piece && piece.color === game.turn()) {
-                selectedSquare = position;
-                possibleMoves = game.moves({ 
-                    square: position, 
-                    verbose: true 
-                }).map(move => move.to);
-                highlightSquares();
+            } else {
+                const from = getSquareNotation(selectedPiece);
+                const to = getSquareNotation(square);
+                makeMove(from + to);
+                selectedPiece.style.backgroundColor = '';
+                selectedPiece = null;
             }
         }
 
-        function highlightSquares() {
-            document.querySelectorAll('.square').forEach(square => {
-                square.classList.remove('selected', 'possible-move');
-                const pos = square.dataset.position;
-                
-                if (pos === selectedSquare) {
-                    square.classList.add('selected');
-                } else if (possibleMoves.includes(pos)) {
-                    square.classList.add('possible-move');
-                }
-            });
-        }
-
-        function clearSelection() {
-            selectedSquare = null;
-            possibleMoves = [];
-            document.querySelectorAll('.square').forEach(square => {
-                square.classList.remove('selected', 'possible-move');
-            });
+        function getSquareNotation(square) {
+            const col = String.fromCharCode(97 + parseInt(square.dataset.col));
+            const row = 8 - parseInt(square.dataset.row);
+            return col + row;
         }
 
         function makeMove(move) {
-            game.move(move);
-            updateBoard();
+            const fromCol = move.charCodeAt(0) - 97;
+            const fromRow = 8 - move.charAt(1);
+            const toCol = move.charCodeAt(2) - 97;
+            const toRow = 8 - move.charAt(3);
+            
+            const fromSquare = document.querySelector(`[data-row="${fromRow}"][data-col="${fromCol}"]`);
+            const toSquare = document.querySelector(`[data-row="${toRow}"][data-col="${toCol}"]`);
+            
+            toSquare.textContent = fromSquare.textContent;
+            fromSquare.textContent = '';
+            
+            isWhiteTurn = !isWhiteTurn;
+            status.textContent = `${isWhiteTurn ? 'White' : 'Black'}'s turn`;
+            
+            if (!isWhiteTurn) {
+                stockfish.postMessage(`position startpos moves ${move}`);
+                stockfish.postMessage('go depth 10');
+            }
         }
-
-        // Initialize game
-        stockfish.postMessage('uci');
-        stockfish.postMessage('isready');
-        createBoard();
     </script>
 </body>
 </html>
