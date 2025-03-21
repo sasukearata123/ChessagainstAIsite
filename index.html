@@ -28,15 +28,15 @@
   <div id="board"></div>
   <button id="newGame">New Game</button>
 
-  <!-- Chess.js for game rules -->
+  <!-- chess.js for game logic -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.2/chess.min.js"></script>
   <!-- Chessboard.js for board rendering -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/js/chessboard.min.js"></script>
   <script>
-    // Initialize a new Chess game
+    // Initialize a new Chess game instance
     var game = new Chess();
     var board = null;
-    var engine = null;  // This will hold our Stockfish Lite engine
+    var engine = null;  // Will hold our Stockfish Lite engine
 
     // Initialize the Stockfish engine as a Web Worker
     function initEngine() {
@@ -46,7 +46,7 @@
       engine.onmessage = function(event) {
         var line = event.data;
         console.log("Engine:", line);
-        // Look for the best move command
+        // Check if the engine has provided a best move
         if (line.indexOf("bestmove") === 0) {
           var parts = line.split(" ");
           var bestMove = parts[1];
@@ -75,7 +75,7 @@
         to: target,
         promotion: 'q'
       });
-      // Illegal move? Snap piece back
+      // Illegal move? Snap piece back.
       if (move === null) return 'snapback';
       
       board.position(game.fen());
@@ -92,7 +92,8 @@
     // Reset the game for a new session
     function newGame() {
       game.reset();
-      board.start();
+      board.position('start');  // Reset board to starting position
+      engine.postMessage("ucinewgame"); // Reset engine's internal state
     }
 
     // Initialize Chessboard.js with our onDrop handler
