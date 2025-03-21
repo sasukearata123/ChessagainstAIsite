@@ -3,12 +3,37 @@
 <head>
     <title>Chess vs Stockfish</title>
     <style>
+        :root {
+            --light-square: #f0d9b5;
+            --dark-square: #b58863;
+            --highlight: rgba(68, 138, 255, 0.5);
+            --possible-move: rgba(255, 255, 0, 0.3);
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #f0f0f0;
+            font-family: Arial, sans-serif;
+        }
+
+        .container {
+            margin-top: 2rem;
+            padding: 20px;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        }
+
         .chessboard {
             width: 560px;
             height: 560px;
-            border: 2px solid #333;
             display: grid;
             grid-template-columns: repeat(8, 1fr);
+            border: 2px solid #333;
+            border-radius: 5px;
+            overflow: hidden;
         }
 
         .square {
@@ -17,35 +42,65 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 50px;
+            font-size: 48px;
             cursor: pointer;
+            transition: background-color 0.2s;
+            position: relative;
         }
 
-        .white {
-            background-color: #f0d9b5;
+        .square.white {
+            background-color: var(--light-square);
         }
 
-        .black {
-            background-color: #b58863;
+        .square.black {
+            background-color: var(--dark-square);
         }
 
-        .selected {
-            background-color: rgba(0, 255, 0, 0.5);
+        .square.selected {
+            background-color: var(--highlight) !important;
         }
 
-        .possible-move {
-            background-color: rgba(255, 255, 0, 0.5);
+        .square.possible-move::after {
+            content: '';
+            position: absolute;
+            width: 24px;
+            height: 24px;
+            background: var(--possible-move);
+            border-radius: 50%;
+        }
+
+        .square:hover {
+            filter: brightness(1.1);
+        }
+
+        .status {
+            margin-top: 1rem;
+            font-size: 1.2rem;
+            color: #333;
+        }
+
+        .piece {
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+            transition: transform 0.2s;
+        }
+
+        .piece:hover {
+            transform: scale(1.1);
         }
     </style>
 </head>
 <body>
-    <div class="chessboard" id="board"></div>
+    <div class="container">
+        <div class="chessboard" id="board"></div>
+        <div class="status" id="status">White's turn</div>
+    </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.js"></script>
     <script src="stockfish.js"></script>
 
     <script>
         const boardElement = document.getElementById('board');
+        const statusElement = document.getElementById('status');
         const game = new Chess();
         let selectedSquare = null;
         let possibleMoves = [];
@@ -55,46 +110,53 @@
         stockfish.onmessage = (event) => {
             if (event.data.includes('bestmove')) {
                 const bestMove = event.data.split('bestmove ')[1].split(' ')[0];
-                makeMove(bestMove);
+                setTimeout(() => makeMove(bestMove), 500); // Add slight delay for natural feel
             }
         };
 
-        // Initialize board
+        // Correct piece Unicode symbols
+        const pieceUnicode = {
+            'w': {
+                'p': '♙', 'n': '♘', 'b': '♗', 'r': '♖', 
+                'q': '♕', 'k': '♔'
+            },
+            'b': {
+                'p': '♟', 'n': '♞', 'b': '♝', 'r': '♜', 
+                'q': '♛', 'k': '♚'
+            }
+        };
+
         function createBoard() {
             boardElement.innerHTML = '';
-            for (let i = 0; i < 64; i++) {
-                const square = document.createElement('div');
-                const row = 8 - Math.floor(i / 8);
-                const col = 'abcdefgh'[i % 8];
-                square.className = `square ${(i + Math.floor(i / 8)) % 2 === 0 ? 'white' : 'black'}`;
-                square.dataset.position = col + row;
-                square.addEventListener('click', handleSquareClick);
-                boardElement.appendChild(square);
+            for (let rank = 8; rank >= 1; rank--) {
+                for (let file = 0; file < 8; file++) {
+                    const square = document.createElement('div');
+                    const fileChar = String.fromCharCode(97 + file);
+                    const position = fileChar + rank;
+                    const isLight = (file + rank) % 2 === 0;
+                    
+                    square.className = `square ${isLight ? 'white' : 'black'}`;
+                    square.dataset.position = position;
+                    square.addEventListener('click', handleSquareClick);
+                    boardElement.appendChild(square);
+                }
             }
             updateBoard();
         }
 
-        // Update piece positions
         function updateBoard() {
             document.querySelectorAll('.square').forEach(square => {
                 const position = square.dataset.position;
                 const piece = game.get(position);
-                square.textContent = piece ? getUnicodePiece(piece) : '';
+                square.innerHTML = piece ? 
+                    `<div class="piece">${pieceUnicode[piece.color][piece.type]}</div>` : '';
             });
+            
+            statusElement.textContent = `${game.turn() === 'w' ? 'White' : 'Black'}'s turn`;
         }
 
-        // Convert piece to Unicode
-        function getUnicodePiece(piece) {
-            const unicodePieces = {
-                'p': '♟', 'n': '♞', 'b': '♝', 'r': '♜', 'q': '♖', 'k': '♔',
-                'P': '♙', 'N': '♘', 'B': '♗', 'R': '♖', 'Q': '♕', 'K': '♔'
-            };
-            return unicodePieces[piece.color === 'w' ? piece.type.toUpperCase() : piece.type];
-        }
-
-        // Handle square clicks
         function handleSquareClick(e) {
-            const position = e.target.dataset.position;
+            const position = e.currentTarget.dataset.position;
             
             if (selectedSquare === position) {
                 clearSelection();
@@ -111,33 +173,38 @@
                 if (move) {
                     clearSelection();
                     updateBoard();
-                    stockfish.postMessage(`position fen ${game.fen()}`);
-                    stockfish.postMessage('go depth 10');
+                    setTimeout(() => {
+                        stockfish.postMessage(`position fen ${game.fen()}`);
+                        stockfish.postMessage('go depth 12');
+                    }, 100);
                     return;
                 }
             }
 
-            const moves = game.moves({ square: position, verbose: true });
-            if (moves.length > 0 && game.turn() === 'w') {
+            const piece = game.get(position);
+            if (piece && piece.color === game.turn()) {
                 selectedSquare = position;
-                possibleMoves = moves.map(move => move.to);
+                possibleMoves = game.moves({ 
+                    square: position, 
+                    verbose: true 
+                }).map(move => move.to);
                 highlightSquares();
             }
         }
 
-        // Highlight selected and possible moves
         function highlightSquares() {
             document.querySelectorAll('.square').forEach(square => {
                 square.classList.remove('selected', 'possible-move');
-                if (square.dataset.position === selectedSquare) {
+                const pos = square.dataset.position;
+                
+                if (pos === selectedSquare) {
                     square.classList.add('selected');
-                } else if (possibleMoves.includes(square.dataset.position)) {
+                } else if (possibleMoves.includes(pos)) {
                     square.classList.add('possible-move');
                 }
             });
         }
 
-        // Clear selection
         function clearSelection() {
             selectedSquare = null;
             possibleMoves = [];
@@ -146,13 +213,12 @@
             });
         }
 
-        // Make computer move
         function makeMove(move) {
             game.move(move);
             updateBoard();
         }
 
-        // Initialize stockfish communication
+        // Initialize game
         stockfish.postMessage('uci');
         stockfish.postMessage('isready');
         createBoard();
